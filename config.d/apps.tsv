@@ -30,3 +30,15 @@ Overige	cask	google-chrome
 Overige	cask	google-drive
 Overige	cask	slack
 Overige	cask	spotify
+#
+# Consultant
+# Google Sheets/Docs/Slides zijn webapps (geen native app/cask): worden als
+# .webloc web-app snelkoppelingen geplaatst. Kolom 4 = URL (alleen voor webapp).
+Consultant	cask	google-chrome
+Consultant	cask	google-drive
+Consultant	cask	chatgpt
+Consultant	cask	claude
+Consultant	cask	spotify
+Consultant	webapp	Google Sheets	https://sheets.google.com
+Consultant	webapp	Google Docs	https://docs.google.com
+Consultant	webapp	Google Slides	https://slides.google.com
