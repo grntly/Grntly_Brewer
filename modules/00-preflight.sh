@@ -52,10 +52,13 @@ preflight_main() {
 
   # --- Employee/user type ----------------------------------------------------
   echo "Voor welk type medewerker is deze machine?"
-  echo "  a: Server   b: Developer   c: Overige medewerker"
-  read -r -p "Keuze (a/b/c): " choice
+  echo "  a: Server   b: Developer   c: Consultant   d: Overige medewerker"
+  read -r -p "Keuze (a/b/c/d): " choice
   case "$choice" in
-    a) USER_TYPE="Server" ;; b) USER_TYPE="Developer" ;; c) USER_TYPE="Overige" ;;
+    a) USER_TYPE="Server" ;;
+    b) USER_TYPE="Developer" ;;
+    c) USER_TYPE="Consultant" ;;
+    d) USER_TYPE="Overige" ;;
     *) die "Ongeldige medewerkerskeuze: $choice" ;;
   esac
   log_ok "Type: ${USER_TYPE}"
