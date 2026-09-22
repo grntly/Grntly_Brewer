@@ -49,6 +49,23 @@ log_warn()  { _log "WARN"  "$C_YELLOW" "$@"; }
 log_error() { _log "ERROR" "$C_RED"    "$@" >&2; }
 log_step()  { printf '\n%s=== %s ===%s\n' "$C_CYAN" "$*" "$C_RESET"; }
 
+# --- Run summary -------------------------------------------------------------
+# Modules record what they actually did here so the end-of-run summary can make
+# any silent "nothing happened" outcome visible.
+GRNTLY_SUMMARY=()
+summary_add()  { GRNTLY_SUMMARY+=("$*"); }
+print_summary() {
+  log_step "Samenvatting"
+  if [[ ${#GRNTLY_SUMMARY[@]} -eq 0 ]]; then
+    log_warn "Er is niets gewijzigd. Controleer of je de juiste keuzes hebt gemaakt."
+    return 0
+  fi
+  local item
+  for item in "${GRNTLY_SUMMARY[@]}"; do
+    printf '  %s•%s %s\n' "$C_GREEN" "$C_RESET" "$item"
+  done
+}
+
 # die MESSAGE [EXIT_CODE]
 die() {
   log_error "${1:-Fataal fout}"
