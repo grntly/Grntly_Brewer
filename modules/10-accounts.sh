@@ -35,30 +35,46 @@ _create_user() {
 }
 
 accounts_main() {
+  local created=0
+
   # --- Admin account ---------------------------------------------------------
-  if ask_yes_no "Wil je een lokaal adminaccount aanmaken?"; then
+  # Default is YES: this is a provisioning tool, so account creation is the
+  # expected path. Answer 'n' explicitly to skip.
+  if ask_yes_no "Wil je een lokaal adminaccount aanmaken?" y; then
     read -r -p "Gebruikersnaam voor adminaccount: " ADMIN_USERNAME
+    [[ -n "$ADMIN_USERNAME" ]] || die "Gebruikersnaam mag niet leeg zijn."
     local pw pw2
     read_secret pw  "Wachtwoord voor adminaccount"
     read_secret pw2 "Herhaal wachtwoord"
     [[ "$pw" == "$pw2" ]] || die "Wachtwoorden komen niet overeen."
     [[ -n "$pw" ]] || die "Leeg wachtwoord is niet toegestaan."
     _create_user "$ADMIN_USERNAME" "$ADMIN_USERNAME" "$pw" 1
+    summary_add "Adminaccount aangemaakt: ${ADMIN_USERNAME}"
+    created=$((created + 1))
     unset pw pw2
+  else
+    log_warn "Adminaccount overgeslagen op eigen verzoek."
   fi
 
   # --- Standard user ---------------------------------------------------------
-  if ask_yes_no "Wil je een gewone gebruiker aanmaken?"; then
+  if ask_yes_no "Wil je een gewone gebruiker aanmaken?" y; then
     read -r -p "Gebruikersnaam: " NEW_USERNAME
+    [[ -n "$NEW_USERNAME" ]] || die "Gebruikersnaam mag niet leeg zijn."
     local pw pw2
     read_secret pw  "Wachtwoord"
     read_secret pw2 "Herhaal wachtwoord"
     [[ "$pw" == "$pw2" ]] || die "Wachtwoorden komen niet overeen."
     [[ -n "$pw" ]] || die "Leeg wachtwoord is niet toegestaan."
     _create_user "$NEW_USERNAME" "$NEW_USERNAME" "$pw" 0
+    summary_add "Gebruiker aangemaakt: ${NEW_USERNAME}"
+    created=$((created + 1))
     unset pw pw2
   else
-    log_info "Geen nieuwe gebruiker aangemaakt."
+    log_warn "Gewone gebruiker overgeslagen op eigen verzoek."
+  fi
+
+  if [[ "$created" -eq 0 ]]; then
+    log_warn "Er zijn GEEN accounts aangemaakt. Als dit niet de bedoeling was, draai: ./install.sh --only 10"
   fi
 
   export ADMIN_USERNAME NEW_USERNAME

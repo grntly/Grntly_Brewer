@@ -89,4 +89,5 @@ for entry in "${MODULES[@]}"; do
   "$func"
 done
 
+print_summary
 log_ok "Setup voltooid."

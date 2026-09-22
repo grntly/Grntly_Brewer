@@ -9,6 +9,20 @@
 # are placed here as .webloc files and this folder is added to the Dock.
 WEBAPP_DIR="/Applications/Grntly Web Apps"
 
+# Counter of packages/shortcuts actually installed this run.
+GRNTLY_APP_COUNT=0
+
+# _ensure_brew — make sure brew is on PATH; recover from a missing shellenv,
+# and fail LOUDLY rather than silently skipping every app.
+_ensure_brew() {
+  have brew && return 0
+  local b
+  for b in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+    if [[ -x "$b" ]]; then eval "$("$b" shellenv)"; break; fi
+  done
+  have brew || die "Homebrew is niet beschikbaar; kan geen apps installeren. Draai eerst module 30: ./install.sh --only 30"
+}
+
 # _install_pkg formula|cask|webapp NAME [URL]
 _install_pkg() {
   local kind="$1" name="$2" url="${3:-}"
@@ -17,16 +31,16 @@ _install_pkg() {
       if brew list --versions "$name" &>/dev/null; then
         log_info "$name is al geïnstalleerd."
       else
-        run brew install "$name"
+        run brew install "$name" && GRNTLY_APP_COUNT=$((GRNTLY_APP_COUNT + 1))
       fi ;;
     cask)
       if brew list --cask --versions "$name" &>/dev/null; then
         log_info "$name (cask) is al geïnstalleerd."
       else
-        run brew install --cask "$name"
+        run brew install --cask "$name" && GRNTLY_APP_COUNT=$((GRNTLY_APP_COUNT + 1))
       fi ;;
     webapp)
-      _install_webapp "$name" "$url" ;;
+      _install_webapp "$name" "$url" && GRNTLY_APP_COUNT=$((GRNTLY_APP_COUNT + 1)) ;;
   esac
 }
 
@@ -92,7 +106,7 @@ _reset_dock() {
 }
 
 apps_main() {
-  have brew || { log_warn "Homebrew ontbreekt; app-installatie overgeslagen."; return 0; }
+  _ensure_brew
 
   log_info "App-profiel installeren voor: ${USER_TYPE}"
   _install_profile "$USER_TYPE"
@@ -114,4 +128,5 @@ apps_main() {
   fi
 
   log_ok "Apps geïnstalleerd voor ${USER_TYPE}."
+  summary_add "Apps voor ${USER_TYPE}: ${GRNTLY_APP_COUNT} nieuw geïnstalleerd (rest was al aanwezig)"
 }
