@@ -173,3 +173,36 @@ tsv_lookup() {
     END { if (!found) exit 1 }
   ' "$file"
 }
+
+# --- macOS user helpers ------------------------------------------------------
+# human_users — list real (non-system) user accounts, UID >= 501.
+human_users() {
+  dscl . -list /Users UniqueID 2>/dev/null | awk '$2 >= 501 {print $1}'
+}
+
+# user_home USER — print a user's home directory (empty if unknown).
+user_home() {
+  dscl . -read "/Users/$1" NFSHomeDirectory 2>/dev/null | awk '{print $2}'
+}
+
+# run_as USER CMD... — run a command as another user (their context),
+# honouring DRY_RUN. Used to apply per-user settings to accounts that may not
+# be the one running the installer.
+run_as() {
+  local user="$1"; shift
+  if [[ "$DRY_RUN" == "1" ]]; then
+    printf '%s[dry-run]%s (als %s) %s\n' "$C_DIM" "$C_RESET" "$user" "$*"
+    return 0
+  fi
+  sudo -u "$user" "$@"
+}
+
+# dock_bin — ensure dockutil is installed (formula, cask fallback) and print
+# its path (nothing if unavailable). Never aborts the run.
+dock_bin() {
+  if have dockutil; then command -v dockutil; return 0; fi
+  [[ "$DRY_RUN" == "1" ]] && return 0
+  brew install dockutil >/dev/null 2>&1 || brew install --cask dockutil >/dev/null 2>&1 || true
+  hash -r 2>/dev/null || true
+  have dockutil && command -v dockutil
+}

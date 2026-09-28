@@ -1,76 +1,95 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# 70-profiles — deploy an optimal macOS defaults set (.macos) and a managed
-# .bashrc for all human users. Idempotent: re-running does not duplicate lines.
+# 70-profiles — deploy macOS defaults and managed shell profiles to EVERY
+# human user, not just the admin running the installer. Idempotent.
 #
-# The .bashrc is deployed from profiles/bashrc.template. A .bash_profile that
-# sources .bashrc is ensured, and a ~/Development directory is created (via a
-# real directory, NOT a `cd` in the profile as the old script did).
+# Per user:
+#   * an optimal set of macOS defaults (Finder/Dock/screenshots/…), applied
+#     with `sudo -u <user> defaults write` so each account gets them;
+#   * a managed .bashrc (from profiles/bashrc.template) + .bash_profile;
+#   * a .zprofile that puts Homebrew on PATH (zsh is the macOS default shell);
+#   * a ~/Development directory.
 # ---------------------------------------------------------------------------
 
 profiles_main() {
-  _apply_macos_defaults
-  _deploy_dotfiles_all_users
+  local u count=0
+  while read -r u; do
+    [[ -n "$u" ]] || continue
+    log_info "Profiel toepassen voor gebruiker: ${u}"
+    _apply_macos_defaults_for "$u"
+    _deploy_dotfiles_one "$u"
+    count=$((count + 1))
+  done < <(human_users)
+  summary_add "Profielen (Finder/Dock-defaults + dotfiles) uitgerold voor ${count} gebruiker(s)"
   log_ok "Profielen uitgerold."
 }
 
-# --- macOS defaults ---------------------------------------------------------
-_apply_macos_defaults() {
-  log_info "macOS-defaults toepassen..."
-  # Finder: show path bar, status bar, extensions, POSIX path in title
-  run defaults write com.apple.finder ShowPathbar -bool true
-  run defaults write com.apple.finder ShowStatusBar -bool true
-  run defaults write com.apple.finder _FXShowPosixPathInTitle -bool true
-  run defaults write NSGlobalDomain AppleShowAllExtensions -bool true
-  run defaults write com.apple.finder FXEnableExtensionChangeWarning -bool false
-  # Screenshots to ~/Screenshots as PNG
-  run mkdir -p "$HOME/Screenshots"
-  run defaults write com.apple.screencapture location -string "$HOME/Screenshots"
-  run defaults write com.apple.screencapture type -string "png"
-  # Dock: autohide, no recents, faster
-  run defaults write com.apple.dock autohide -bool true
-  run defaults write com.apple.dock show-recents -bool false
-  # Avoid creating .DS_Store on network/USB volumes
-  run defaults write com.apple.desktopservices DSDontWriteNetworkStores -bool true
-  run defaults write com.apple.desktopservices DSDontWriteUSBStores -bool true
-  # Expand save/print dialogs by default
-  run defaults write NSGlobalDomain NSNavPanelExpandedStateForSaveMode -bool true
-  run defaults write NSGlobalDomain PMPrintingExpandedStateForPrint -bool true
-
-  run killall Finder 2>/dev/null || true
-  run killall Dock   2>/dev/null || true
-}
-
-# --- Dotfiles ---------------------------------------------------------------
-# List human users (UID >= 501) with a real home directory.
-_human_users() {
-  dscl . -list /Users UniqueID 2>/dev/null | awk '$2 >= 501 {print $1}'
-}
-
-_deploy_dotfiles_one() {
+# --- macOS defaults (per user) ----------------------------------------------
+_apply_macos_defaults_for() {
   local user="$1" home
-  home="$(dscl . -read "/Users/$user" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
-  [[ -d "$home" ]] || { log_warn "Home van $user niet gevonden; overslaan."; return 0; }
+  home="$(user_home "$user")"
 
-  local tmpl="${GRNTLY_ROOT}/profiles/bashrc.template"
-  log_info "Dotfiles uitrollen voor ${user} (${home})"
+  # Finder: path/status bar, show extensions, POSIX path in title
+  run_as "$user" defaults write com.apple.finder ShowPathbar -bool true
+  run_as "$user" defaults write com.apple.finder ShowStatusBar -bool true
+  run_as "$user" defaults write com.apple.finder _FXShowPosixPathInTitle -bool true
+  run_as "$user" defaults write NSGlobalDomain AppleShowAllExtensions -bool true
+  run_as "$user" defaults write com.apple.finder FXEnableExtensionChangeWarning -bool false
+
+  # Screenshots to ~/Screenshots as PNG
+  if [[ -n "$home" ]]; then
+    run_as "$user" mkdir -p "${home}/Screenshots"
+    run_as "$user" defaults write com.apple.screencapture location -string "${home}/Screenshots"
+  fi
+  run_as "$user" defaults write com.apple.screencapture type -string "png"
+
+  # Dock: autohide, no recents
+  run_as "$user" defaults write com.apple.dock autohide -bool true
+  run_as "$user" defaults write com.apple.dock show-recents -bool false
+
+  # Avoid .DS_Store on network/USB volumes
+  run_as "$user" defaults write com.apple.desktopservices DSDontWriteNetworkStores -bool true
+  run_as "$user" defaults write com.apple.desktopservices DSDontWriteUSBStores -bool true
+
+  # Expand save/print dialogs by default
+  run_as "$user" defaults write NSGlobalDomain NSNavPanelExpandedStateForSaveMode -bool true
+  run_as "$user" defaults write NSGlobalDomain PMPrintingExpandedStateForPrint -bool true
+
+  # Restart the UI for this user if they are logged in (harmless otherwise).
+  run_as "$user" killall Finder >/dev/null 2>&1 || true
+  run_as "$user" killall Dock   >/dev/null 2>&1 || true
+}
+
+# --- Dotfiles (per user) ----------------------------------------------------
+_deploy_dotfiles_one() {
+  local user="$1" home tmpl="${GRNTLY_ROOT}/profiles/bashrc.template"
+  home="$(user_home "$user")"
+  [[ -d "$home" ]] || { log_warn "Home van ${user} niet gevonden; dotfiles overslaan."; return 0; }
 
   if [[ "$DRY_RUN" == "1" ]]; then
-    log_info "[dry-run] deploy .bashrc/.bash_profile + ~/Development voor ${user}"
+    log_info "[dry-run] dotfiles (.bashrc/.bash_profile/.zprofile) + ~/Development voor ${user}"
     return 0
   fi
 
-  backup_once "${home}/.bashrc"
-  sudo cp "$tmpl" "${home}/.bashrc"
-  # .bash_profile should source .bashrc (login shells)
-  printf '%s\n' '[[ -f ~/.bashrc ]] && source ~/.bashrc' | sudo tee "${home}/.bash_profile" >/dev/null
-  sudo mkdir -p "${home}/Development"
-  sudo chown "$user" "${home}/.bashrc" "${home}/.bash_profile" "${home}/Development"
-}
+  # Back up existing files once (sudo: we may be writing another user's home).
+  local f
+  for f in .bashrc .zprofile; do
+    if [[ -f "${home}/${f}" && ! -f "${home}/${f}.grntly.bak" ]]; then
+      sudo cp -p "${home}/${f}" "${home}/${f}.grntly.bak"
+    fi
+  done
 
-_deploy_dotfiles_all_users() {
-  local u
-  while read -r u; do
-    [[ -n "$u" ]] && _deploy_dotfiles_one "$u"
-  done < <(_human_users)
+  sudo cp "$tmpl" "${home}/.bashrc"
+  printf '%s\n' '[[ -f ~/.bashrc ]] && source ~/.bashrc' | sudo tee "${home}/.bash_profile" >/dev/null
+
+  # zsh (macOS default shell): put Homebrew on PATH for login shells.
+  sudo tee "${home}/.zprofile" >/dev/null <<'ZP'
+# Managed by Grntly Brewer
+[[ -x /opt/homebrew/bin/brew ]] && eval "$(/opt/homebrew/bin/brew shellenv)"
+[[ -f ~/.zprofile.local ]] && source ~/.zprofile.local
+ZP
+
+  sudo mkdir -p "${home}/Development"
+  sudo chown "$user" \
+    "${home}/.bashrc" "${home}/.bash_profile" "${home}/.zprofile" "${home}/Development"
 }

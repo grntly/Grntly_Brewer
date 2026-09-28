@@ -47,15 +47,21 @@ _vscode_extensions() {
 }
 
 _dev_dock() {
-  have dockutil || return 0
-  local app
-  for app in "/Applications/Visual Studio Code.app" \
-             "/Applications/OrbStack.app" \
-             "/Applications/Postman.app" \
-             "/System/Applications/Utilities/Terminal.app"; do
-    if [[ -d "$app" ]]; then
-      run dockutil --add "$app" --no-restart 2>/dev/null || true
-    fi
-  done
-  run killall Dock 2>/dev/null || true
+  local du; du="$(dock_bin)"
+  [[ -n "$du" ]] || return 0
+  local u home app
+  while read -r u; do
+    [[ -n "$u" ]] || continue
+    home="$(user_home "$u")"
+    [[ -d "$home" ]] || continue
+    for app in "/Applications/Visual Studio Code.app" \
+               "/Applications/OrbStack.app" \
+               "/Applications/Postman.app" \
+               "/System/Applications/Utilities/Terminal.app"; do
+      if [[ -e "$app" ]]; then
+        run_as "$u" "$du" --add "$app" --no-restart "$home" >/dev/null 2>&1 || true
+      fi
+    done
+    run_as "$u" killall Dock >/dev/null 2>&1 || true
+  done < <(human_users)
 }
