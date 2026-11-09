@@ -82,32 +82,75 @@ WALLPAPER_DEST="/Library/Desktop Pictures/company-wallpaper.jpg"
 WALLPAPER_AGENT="/Library/LaunchAgents/com.grntly.wallpaper.plist"
 WALLPAPER_SCRIPT="/usr/local/grntly/set-wallpaper.sh"
 
+# desktoppr: a small, notarized tool that sets the macOS wallpaper reliably on
+# every recent macOS version (incl. Sonoma/Sequoia, where the old AppleScript
+# method is unreliable). Pinned release + checksum.
+DESKTOPPR_URL="https://github.com/scriptingosx/desktoppr/releases/download/v0.4/desktoppr-0.4.pkg"
+DESKTOPPR_SHA256="d4da2ee76007c89ba416930c674b30c77adefba7627b4fc643d3856c93d619ee"
+DESKTOPPR_BIN="/usr/local/bin/desktoppr"
+
+# _install_desktoppr — download, verify (sha256) and install desktoppr. Returns
+# non-zero WITHOUT aborting the run if it cannot be installed, so callers fall
+# back to AppleScript.
+_install_desktoppr() {
+  if [[ -x "$DESKTOPPR_BIN" ]]; then return 0; fi
+  local pkg="/tmp/grntly-desktoppr.pkg"
+  if ! curl -fsSL --max-time 60 -o "$pkg" "$DESKTOPPR_URL"; then
+    log_warn "desktoppr download mislukt; val terug op AppleScript voor de wallpaper."
+    return 1
+  fi
+  local got; got="$(shasum -a 256 "$pkg" | awk '{print $1}')"
+  if [[ "$got" != "$DESKTOPPR_SHA256" ]]; then
+    log_warn "desktoppr checksum klopt niet; niet geïnstalleerd (verwacht ${DESKTOPPR_SHA256}, kreeg ${got})."
+    rm -f "$pkg"; return 1
+  fi
+  if ! sudo installer -pkg "$pkg" -target / >/dev/null 2>&1; then
+    log_warn "desktoppr-installatie mislukt; val terug op AppleScript."
+    rm -f "$pkg"; return 1
+  fi
+  rm -f "$pkg"
+  log_ok "desktoppr geïnstalleerd (betrouwbare wallpaper op moderne macOS)."
+  [[ -x "$DESKTOPPR_BIN" ]]
+}
+
 # _deploy_wallpaper — install the company wallpaper system-wide and apply it to
 # every user, including accounts that have not logged in yet. A per-login
-# LaunchAgent sets it in each user's GUI session (osascript needs an Aqua
-# session, so it cannot be set directly for a not-logged-in user).
+# LaunchAgent sets it in each user's GUI session using desktoppr (reliable on
+# modern macOS), with AppleScript as a fallback.
 _deploy_wallpaper() {
   [[ -n "${WALLPAPER_URL:-}" ]] || return 0
-  log_info "Wallpaper installeren (systeembreed, alle gebruikers)..."
+  log_info "Wallpaper installeren (systeembreed, alle gebruikers) voor ${COMPANY_NAME}..."
   if [[ "$DRY_RUN" == "1" ]]; then
-    log_info "[dry-run] download ${WALLPAPER_URL} -> ${WALLPAPER_DEST}; LaunchAgent ${WALLPAPER_AGENT}"
+    log_info "[dry-run] download ${WALLPAPER_URL} -> ${WALLPAPER_DEST}; desktoppr + LaunchAgent ${WALLPAPER_AGENT}"
     return 0
   fi
 
   sudo mkdir -p "/Library/Desktop Pictures"
   if ! curl -fsSL --max-time 30 "$WALLPAPER_URL" -o /tmp/company-wallpaper.jpg; then
-    log_warn "Wallpaper downloaden mislukt voor ${COMPANY_NAME}; overslaan."
+    log_warn "Wallpaper downloaden mislukt voor ${COMPANY_NAME} (${WALLPAPER_URL}); achtergrond NIET ingesteld."
     return 0
+  fi
+  # Reject a non-image (e.g. an HTML error page served with HTTP 200).
+  if ! file -b --mime-type /tmp/company-wallpaper.jpg | grep -q '^image/'; then
+    log_warn "Gedownloade wallpaper is geen afbeelding (${WALLPAPER_URL}); achtergrond NIET ingesteld."
+    rm -f /tmp/company-wallpaper.jpg; return 0
   fi
   sudo cp /tmp/company-wallpaper.jpg "$WALLPAPER_DEST"
   sudo chmod 644 "$WALLPAPER_DEST"
   rm -f /tmp/company-wallpaper.jpg
 
+  _install_desktoppr || true
+
   sudo mkdir -p /usr/local/grntly
   sudo tee "$WALLPAPER_SCRIPT" >/dev/null <<'WP'
 #!/bin/bash
+# Set the company wallpaper for the current user. Prefer desktoppr (reliable on
+# modern macOS); fall back to AppleScript on older systems.
 IMG="/Library/Desktop Pictures/company-wallpaper.jpg"
 [[ -f "$IMG" ]] || exit 0
+if [[ -x /usr/local/bin/desktoppr ]]; then
+  /usr/local/bin/desktoppr "$IMG" >/dev/null 2>&1 && exit 0
+fi
 osascript -e "tell application \"System Events\" to set picture of every desktop to POSIX file \"$IMG\"" 2>/dev/null || true
 WP
   sudo chmod 755 "$WALLPAPER_SCRIPT"
@@ -133,12 +176,11 @@ WP
 PLIST
   sudo chmod 644 "$WALLPAPER_AGENT"
 
-  # Apply immediately for whoever is at the console right now (if anyone).
+  # Apply immediately for whoever is at the console right now (if anyone),
+  # reusing the same script (desktoppr or AppleScript fallback).
   local console_user; console_user="$(stat -f%Su /dev/console 2>/dev/null || echo '')"
   if [[ -n "$console_user" && "$console_user" != "root" ]]; then
-    run_as "$console_user" osascript -e \
-      "tell application \"System Events\" to set picture of every desktop to POSIX file \"$WALLPAPER_DEST\"" \
-      2>/dev/null || true
+    run_as "$console_user" /bin/bash "$WALLPAPER_SCRIPT" 2>/dev/null || true
   fi
   log_ok "Wallpaper geïnstalleerd + LaunchAgent voor toekomstige logins."
   summary_add "Wallpaper ingesteld voor alle gebruikers (${COMPANY_NAME})"
