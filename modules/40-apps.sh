@@ -117,27 +117,46 @@ _install_desktoppr() {
 # every user, including accounts that have not logged in yet. A per-login
 # LaunchAgent sets it in each user's GUI session using desktoppr (reliable on
 # modern macOS), with AppleScript as a fallback.
+# _deploy_wallpaper — install the company wallpaper system-wide and apply it to
+# every user, including accounts that have not logged in yet. The wallpaper
+# shipped in the repo (assets/wallpapers/<PREFIX>-macwallpaper.jpg) takes
+# precedence over the optional download URL, so provisioning does not depend on
+# an external host. A per-login LaunchAgent sets it in each user's GUI session
+# using desktoppr (reliable on modern macOS), with AppleScript as a fallback.
 _deploy_wallpaper() {
-  [[ -n "${WALLPAPER_URL:-}" ]] || return 0
+  local asset="${GRNTLY_ROOT}/assets/wallpapers/${COMPANY_PREFIX}-macwallpaper.jpg"
+  if [[ ! -f "$asset" && -z "${WALLPAPER_URL:-}" ]]; then
+    log_info "Geen wallpaper (lokaal of URL) voor ${COMPANY_NAME}; overslaan."
+    return 0
+  fi
   log_info "Wallpaper installeren (systeembreed, alle gebruikers) voor ${COMPANY_NAME}..."
   if [[ "$DRY_RUN" == "1" ]]; then
-    log_info "[dry-run] download ${WALLPAPER_URL} -> ${WALLPAPER_DEST}; desktoppr + LaunchAgent ${WALLPAPER_AGENT}"
+    if [[ -f "$asset" ]]; then
+      log_info "[dry-run] lokale asset ${asset} -> ${WALLPAPER_DEST}; desktoppr + LaunchAgent"
+    else
+      log_info "[dry-run] download ${WALLPAPER_URL} -> ${WALLPAPER_DEST}; desktoppr + LaunchAgent"
+    fi
     return 0
   fi
 
   sudo mkdir -p "/Library/Desktop Pictures"
-  if ! curl -fsSL --max-time 30 "$WALLPAPER_URL" -o /tmp/company-wallpaper.jpg; then
-    log_warn "Wallpaper downloaden mislukt voor ${COMPANY_NAME} (${WALLPAPER_URL}); achtergrond NIET ingesteld."
-    return 0
+  if [[ -f "$asset" ]]; then
+    log_info "Lokale wallpaper uit repo: $(basename "$asset")"
+    sudo cp "$asset" "$WALLPAPER_DEST"
+  else
+    if ! curl -fsSL --max-time 30 "$WALLPAPER_URL" -o /tmp/company-wallpaper.jpg; then
+      log_warn "Wallpaper downloaden mislukt voor ${COMPANY_NAME} (${WALLPAPER_URL}); achtergrond NIET ingesteld."
+      return 0
+    fi
+    # Reject a non-image (e.g. an HTML error page served with HTTP 200).
+    if ! file -b --mime-type /tmp/company-wallpaper.jpg | grep -q '^image/'; then
+      log_warn "Gedownloade wallpaper is geen afbeelding (${WALLPAPER_URL}); achtergrond NIET ingesteld."
+      rm -f /tmp/company-wallpaper.jpg; return 0
+    fi
+    sudo cp /tmp/company-wallpaper.jpg "$WALLPAPER_DEST"
+    rm -f /tmp/company-wallpaper.jpg
   fi
-  # Reject a non-image (e.g. an HTML error page served with HTTP 200).
-  if ! file -b --mime-type /tmp/company-wallpaper.jpg | grep -q '^image/'; then
-    log_warn "Gedownloade wallpaper is geen afbeelding (${WALLPAPER_URL}); achtergrond NIET ingesteld."
-    rm -f /tmp/company-wallpaper.jpg; return 0
-  fi
-  sudo cp /tmp/company-wallpaper.jpg "$WALLPAPER_DEST"
   sudo chmod 644 "$WALLPAPER_DEST"
-  rm -f /tmp/company-wallpaper.jpg
 
   _install_desktoppr || true
 
