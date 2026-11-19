@@ -16,15 +16,18 @@ log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" | tee -a "$LOG"; 
 
 console_user="$(stat -f%Su /dev/console 2>/dev/null || echo root)"
 BREW="/opt/homebrew/bin/brew"
+# Wrap sudo in a function so the log redirect (done by root, who runs this
+# script) is clearly separate from the privilege drop (avoids shellcheck SC2024).
+brew_as_user() { sudo -u "$console_user" "$BREW" "$@"; }
 
 log "=== grntly-update start (console: ${console_user}) ==="
 
 if [[ -x "$BREW" && "$console_user" != "root" ]]; then
   log "Homebrew bijwerken..."
-  sudo -u "$console_user" "$BREW" update            >>"$LOG" 2>&1 || log "brew update: fout"
-  sudo -u "$console_user" "$BREW" upgrade           >>"$LOG" 2>&1 || log "brew upgrade: fout"
-  sudo -u "$console_user" "$BREW" upgrade --cask     >>"$LOG" 2>&1 || true
-  sudo -u "$console_user" "$BREW" cleanup -s         >>"$LOG" 2>&1 || true
+  brew_as_user update        >>"$LOG" 2>&1 || log "brew update: fout"
+  brew_as_user upgrade       >>"$LOG" 2>&1 || log "brew upgrade: fout"
+  brew_as_user upgrade --cask >>"$LOG" 2>&1 || true
+  brew_as_user cleanup -s     >>"$LOG" 2>&1 || true
 else
   log "Homebrew niet gevonden of geen console-gebruiker; brew overgeslagen."
 fi
