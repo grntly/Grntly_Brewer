@@ -1,0 +1,11 @@
+# Grntly Brewer — admin SSH public keys (één per regel).
+# Deze PUBLIEKE sleutels mogen inloggen op het admin-account van elke Mac
+# (over de Tailscale-overlay). Plak hier de publieke sleutel(s) van de
+# beheerders-MacBook(s), bijvoorbeeld:
+#
+#   ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... jelmer@macbook
+#
+# Je publieke sleutel ophalen op de MacBook:  cat ~/.ssh/id_ed25519.pub
+# (Nog geen sleutel?  ssh-keygen -t ed25519 -C "jelmer@macbook")
+#
+# ALLEEN publieke sleutels hier. Nooit een private key committen.

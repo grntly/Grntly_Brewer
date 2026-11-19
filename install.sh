@@ -67,9 +67,11 @@ declare -a MODULES=(
   "30-homebrew:homebrew_main"
   "40-apps:apps_main"
   "50-security:security_main"
+  "55-remote:remote_main"
   "60-debloat:debloat_main"
   "70-profiles:profiles_main"
   "80-developer:developer_main"
+  "90-verify:verify_main"
 )
 
 should_run() {
@@ -90,4 +92,8 @@ for entry in "${MODULES[@]}"; do
 done
 
 print_summary
+if [[ "${GRNTLY_VERIFY_FAILED:-0}" -eq 1 ]]; then
+  log_warn "Setup voltooid, maar de eindcontrole meldde openstaande punten (exit 2)."
+  exit 2
+fi
 log_ok "Setup voltooid."

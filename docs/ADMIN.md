@@ -71,3 +71,70 @@ gatekeeper, free_gb, uptime, brew_outdated_count, brew_outdated, reported_at`
   harde eis wordt, is de agent hierboven de bootstrap-laag onder een MDM.
 - De agent draait als root-daemon; `brew`-acties worden als de console-gebruiker
   uitgevoerd omdat Homebrew user-owned is.
+
+---
+
+# Remote beheer (Tailscale + SSH)
+
+Doel: vanaf je MacBook veilig bij elke bedrijfslaptop komen — waar hij ook staat,
+achter NAT — om updates te draaien. Geen rauwe internet-SSH; Tailscale
+(WireGuard) regelt bereikbaarheid en toegangscontrole.
+
+## 1. Eenmalig instellen (Tailscale admin)
+
+1. Maak een **tag** `tag:grntly-macs` en een **auth key** met die tag
+   (Settings → Keys → Generate auth key; "Reusable" aan, evt. "Ephemeral" uit).
+2. Zet een **ACL** die alleen admins bij de Macs laat (voorbeeld):
+
+```jsonc
+{
+  "tagOwners": { "tag:grntly-macs": ["autogroup:admin"] },
+  "acls": [
+    { "action": "accept", "src": ["autogroup:admin"], "dst": ["tag:grntly-macs:22"] }
+  ],
+  "ssh": [
+    { "action": "accept", "src": ["autogroup:admin"],
+      "dst": ["tag:grntly-macs"], "users": ["admin", "autogroup:nonroot"] }
+  ]
+}
+```
+
+3. Zet **jouw publieke SSH-sleutel** in `config.d/ssh_authorized_keys`
+   (één per regel). Haal 'm op met `cat ~/.ssh/id_ed25519.pub`.
+
+## 2. Bij het uitrollen (op de Mac)
+
+Module `55-remote` doet automatisch:
+- Remote Login (sshd) aan + gehard: **alleen sleutels**, geen wachtwoord, geen root.
+- Jouw publieke sleutel in het admin-account.
+- Tailscale installeren en aanmelden met de auth key (tag `grntly-macs`),
+  hostnaam = computernaam (bv. `GRANTLY-MBP-2601-JD`).
+- `grntly-update` commando geïnstalleerd.
+
+De auth key geef je mee zonder dat hij in `ps`/history belandt:
+
+```bash
+TS_AUTHKEY='tskey-auth-xxxx' ./install.sh            # onbemand
+# of je wordt er tijdens de wizard veilig naar gevraagd (niet zichtbaar).
+```
+
+## 3. Verbinden en updaten (vanaf je MacBook)
+
+```bash
+# lijst van laptops in je tailnet
+tailscale status
+
+# verbinden (hostnaam of tailnet-IP)
+ssh admin@GRANTLY-MBP-2601-JD
+
+# updates draaien op afstand (brew + macOS software-updates)
+ssh admin@GRANTLY-MBP-2601-JD 'sudo /usr/local/grntly/grntly-update.sh'
+# of, met Tailscale SSH:
+tailscale ssh admin@GRANTLY-MBP-2601-JD sudo /usr/local/grntly/grntly-update.sh
+```
+
+Logboek op de Mac: `/var/log/grntly-update.log`. Na een update rapporteert de
+machine zijn nieuwe status naar de Google Sheet (als de reporting-agent draait).
+
+> `grntly-update.sh` herstart niet automatisch. Updates die een reboot vereisen
+> worden gedownload/voorbereid; plan de reboot zelf of voeg `--restart` toe.
