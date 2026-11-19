@@ -15,11 +15,17 @@ supply-chain-veiligheid):
 ```bash
 git clone https://github.com/grntly/grntly_brewer.git
 cd grntly_brewer
-./install.sh            # interactieve setup
+./install.sh            # interactieve setup (met bevestigingsscherm)
 ./install.sh --dry-run  # laat zien wat er zou gebeuren, wijzigt niets
+./install.sh --yes      # sla het bevestigingsscherm over (onbemand)
 ./install.sh --rollback # accounts/naam/homebrew van een run terugdraaien
 ./install.sh --only 50,70   # alleen bepaalde modules draaien
 ```
+
+Het **uitrolbeleid** staat in `config.d/policy.conf` (welke security-controls
+worden afgedwongen en de standaard-antwoorden). De wizard toont vooraf één
+samenvatting ter bevestiging, draait fouttolerant door, en sluit af met een
+**eindcontrole** (exit 2 als een must-have niet goed staat).
 
 ## Wat de installer doet
 

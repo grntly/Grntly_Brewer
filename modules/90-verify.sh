@@ -23,18 +23,28 @@ _check() {
 }
 
 verify_main() {
-  _check "FileVault staat aan" \
-    bash -c 'fdesetup status 2>/dev/null | grep -q "FileVault is On"'
-  _check "Firewall staat aan" \
-    bash -c '/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null | grep -qi enabled'
-  _check "Gatekeeper staat aan" \
-    bash -c 'spctl --status 2>/dev/null | grep -qi enabled'
-  _check "Automatische updates aan" \
-    bash -c 'defaults read /Library/Preferences/com.apple.SoftwareUpdate AutomaticCheckEnabled 2>/dev/null | grep -q 1'
-  _check "Remote Login (SSH) aan" \
-    bash -c 'systemsetup -getremotelogin 2>/dev/null | grep -qi "On"'
-  _check "Tailscale actief" \
-    bash -c 'tailscale status >/dev/null 2>&1'
+  if policy_enabled ENFORCE_FILEVAULT; then
+    _check "FileVault staat aan" \
+      bash -c 'fdesetup status 2>/dev/null | grep -q "FileVault is On"'
+  fi
+  if policy_enabled ENFORCE_FIREWALL; then
+    _check "Firewall staat aan" \
+      bash -c '/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null | grep -qi enabled'
+  fi
+  if policy_enabled ENFORCE_GATEKEEPER; then
+    _check "Gatekeeper staat aan" \
+      bash -c 'spctl --status 2>/dev/null | grep -qi enabled'
+  fi
+  if policy_enabled ENFORCE_AUTOUPDATES; then
+    _check "Automatische updates aan" \
+      bash -c 'defaults read /Library/Preferences/com.apple.SoftwareUpdate AutomaticCheckEnabled 2>/dev/null | grep -q 1'
+  fi
+  if policy_enabled ENABLE_REMOTE; then
+    _check "Remote Login (SSH) aan" \
+      bash -c 'systemsetup -getremotelogin 2>/dev/null | grep -qi "On"'
+    _check "Tailscale actief" \
+      bash -c 'tailscale status >/dev/null 2>&1'
+  fi
   _check "Wallpaper geplaatst" \
     test -f "/Library/Desktop Pictures/company-wallpaper.jpg"
 

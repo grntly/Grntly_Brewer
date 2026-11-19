@@ -40,7 +40,7 @@ accounts_main() {
   # --- Admin account ---------------------------------------------------------
   # Default is YES: this is a provisioning tool, so account creation is the
   # expected path. Answer 'n' explicitly to skip.
-  if ask_yes_no "Wil je een lokaal adminaccount aanmaken?" y; then
+  if ask_yes_no "Wil je een lokaal adminaccount aanmaken?" "$(policy_default_char CREATE_ADMIN)"; then
     read -r -p "Gebruikersnaam voor adminaccount: " ADMIN_USERNAME
     [[ -n "$ADMIN_USERNAME" ]] || die "Gebruikersnaam mag niet leeg zijn."
     local pw pw2
@@ -57,7 +57,7 @@ accounts_main() {
   fi
 
   # --- Standard user ---------------------------------------------------------
-  if ask_yes_no "Wil je een gewone gebruiker aanmaken?" y; then
+  if ask_yes_no "Wil je een gewone gebruiker aanmaken?" "$(policy_default_char CREATE_USER)"; then
     read -r -p "Gebruikersnaam: " NEW_USERNAME
     [[ -n "$NEW_USERNAME" ]] || die "Gebruikersnaam mag niet leeg zijn."
     local pw pw2

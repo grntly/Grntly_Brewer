@@ -12,12 +12,12 @@
 _fw="/usr/libexec/ApplicationFirewall/socketfilterfw"
 
 security_main() {
-  _harden_firewall
-  _harden_gatekeeper
-  _harden_updates
-  _harden_screenlock
-  _harden_filevault
-  log_ok "Security-hardening toegepast."
+  if policy_enabled ENFORCE_FIREWALL;    then _harden_firewall;   else log_info "Firewall overgeslagen (beleid: ENFORCE_FIREWALL=no)."; fi
+  if policy_enabled ENFORCE_GATEKEEPER;  then _harden_gatekeeper; else log_info "Gatekeeper overgeslagen (beleid)."; fi
+  if policy_enabled ENFORCE_AUTOUPDATES; then _harden_updates;    else log_info "Auto-updates overgeslagen (beleid)."; fi
+  if policy_enabled ENFORCE_SCREENLOCK;  then _harden_screenlock; else log_info "Schermvergrendeling overgeslagen (beleid)."; fi
+  if policy_enabled ENFORCE_FILEVAULT;   then _harden_filevault;  else log_info "FileVault overgeslagen (beleid)."; fi
+  log_ok "Security-hardening toegepast (volgens beleid)."
 }
 
 _harden_firewall() {

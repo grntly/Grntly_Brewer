@@ -162,6 +162,40 @@ read_secret() {
   printf -v "$__var" '%s' "$__val"
 }
 
+# --- Rollout policy (config.d/policy.conf) -----------------------------------
+# A simple KEY=VALUE file codifying the rollout policy. Parsed (not sourced) so
+# it cannot execute code. Kept bash 3.2 compatible (no associative arrays).
+: "${GRNTLY_POLICY_FILE:=${GRNTLY_ROOT:-.}/config.d/policy.conf}"
+
+# policy_get KEY [default] — print the (trimmed) value, or default if absent.
+policy_get() {
+  local key="$1" default="${2:-}" val
+  if [[ ! -f "$GRNTLY_POLICY_FILE" ]]; then printf '%s' "$default"; return 0; fi
+  val="$(awk -F= -v k="$key" '
+    /^[[:space:]]*#/ { next }
+    { kk=$1; gsub(/^[[:space:]]+|[[:space:]]+$/, "", kk) }
+    kk==k {
+      sub(/^[^=]*=/, "")
+      sub(/[[:space:]]+#.*$/, "")          # strip trailing inline comment
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0)
+      print; found=1; exit
+    }
+    END { if (!found) exit 1 }
+  ' "$GRNTLY_POLICY_FILE" 2>/dev/null)" || val="$default"
+  printf '%s' "$val"
+}
+
+# policy_enabled KEY — succeeds (0) when the value is yes/true/1/on (default no).
+policy_enabled() {
+  local v; v="$(policy_get "$1" no | tr '[:upper:]' '[:lower:]')"
+  [[ "$v" == "yes" || "$v" == "true" || "$v" == "1" || "$v" == "on" ]]
+}
+
+# policy_default_char KEY — "y" if the policy enables KEY, else "n" (for prompts).
+policy_default_char() {
+  if policy_enabled "$1"; then printf 'y'; else printf 'n'; fi
+}
+
 # --- Config (.tsv) helpers ---------------------------------------------------
 # tsv_lookup FILE KEY COL — print column COL (1-based) of the first row whose
 # first field equals KEY. Lines starting with # are treated as comments.
