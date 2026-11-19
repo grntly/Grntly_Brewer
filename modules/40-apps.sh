@@ -118,43 +118,44 @@ _install_desktoppr() {
 # LaunchAgent sets it in each user's GUI session using desktoppr (reliable on
 # modern macOS), with AppleScript as a fallback.
 # _deploy_wallpaper — install the company wallpaper system-wide and apply it to
-# every user, including accounts that have not logged in yet. The wallpaper
-# shipped in the repo (assets/wallpapers/<PREFIX>-macwallpaper.jpg) takes
-# precedence over the optional download URL, so provisioning does not depend on
-# an external host. A per-login LaunchAgent sets it in each user's GUI session
-# using desktoppr (reliable on modern macOS), with AppleScript as a fallback.
+# every user, including accounts that have not logged in yet. The live URL
+# (real, current artwork) is preferred; the wallpaper shipped in the repo
+# (assets/wallpapers/<PREFIX>-macwallpaper.jpg) is the offline fallback. A
+# per-login LaunchAgent sets it in each user's GUI session using desktoppr
+# (reliable on modern macOS), with AppleScript as a fallback.
 _deploy_wallpaper() {
   local asset="${GRNTLY_ROOT}/assets/wallpapers/${COMPANY_PREFIX}-macwallpaper.jpg"
-  if [[ ! -f "$asset" && -z "${WALLPAPER_URL:-}" ]]; then
-    log_info "Geen wallpaper (lokaal of URL) voor ${COMPANY_NAME}; overslaan."
+  if [[ -z "${WALLPAPER_URL:-}" && ! -f "$asset" ]]; then
+    log_info "Geen wallpaper (URL of lokaal) voor ${COMPANY_NAME}; overslaan."
     return 0
   fi
   log_info "Wallpaper installeren (systeembreed, alle gebruikers) voor ${COMPANY_NAME}..."
   if [[ "$DRY_RUN" == "1" ]]; then
-    if [[ -f "$asset" ]]; then
-      log_info "[dry-run] lokale asset ${asset} -> ${WALLPAPER_DEST}; desktoppr + LaunchAgent"
-    else
-      log_info "[dry-run] download ${WALLPAPER_URL} -> ${WALLPAPER_DEST}; desktoppr + LaunchAgent"
-    fi
+    log_info "[dry-run] wallpaper -> ${WALLPAPER_DEST} (URL eerst: ${WALLPAPER_URL:-geen}, fallback: ${asset}); desktoppr + LaunchAgent"
     return 0
   fi
 
   sudo mkdir -p "/Library/Desktop Pictures"
-  if [[ -f "$asset" ]]; then
-    log_info "Lokale wallpaper uit repo: $(basename "$asset")"
-    sudo cp "$asset" "$WALLPAPER_DEST"
-  else
-    if ! curl -fsSL --max-time 30 "$WALLPAPER_URL" -o /tmp/company-wallpaper.jpg; then
-      log_warn "Wallpaper downloaden mislukt voor ${COMPANY_NAME} (${WALLPAPER_URL}); achtergrond NIET ingesteld."
-      return 0
+  local placed=0
+  # 1) Prefer the live URL (real, current artwork).
+  if [[ -n "${WALLPAPER_URL:-}" ]]; then
+    if curl -fsSL --max-time 30 "$WALLPAPER_URL" -o /tmp/company-wallpaper.jpg \
+       && file -b --mime-type /tmp/company-wallpaper.jpg | grep -q '^image/'; then
+      sudo cp /tmp/company-wallpaper.jpg "$WALLPAPER_DEST"; placed=1
+      log_info "Wallpaper van URL gebruikt (${WALLPAPER_URL})."
+    else
+      log_warn "Wallpaper-URL niet bruikbaar (${WALLPAPER_URL}); val terug op lokale asset."
     fi
-    # Reject a non-image (e.g. an HTML error page served with HTTP 200).
-    if ! file -b --mime-type /tmp/company-wallpaper.jpg | grep -q '^image/'; then
-      log_warn "Gedownloade wallpaper is geen afbeelding (${WALLPAPER_URL}); achtergrond NIET ingesteld."
-      rm -f /tmp/company-wallpaper.jpg; return 0
-    fi
-    sudo cp /tmp/company-wallpaper.jpg "$WALLPAPER_DEST"
     rm -f /tmp/company-wallpaper.jpg
+  fi
+  # 2) Fall back to the committed repo asset.
+  if [[ "$placed" -eq 0 && -f "$asset" ]]; then
+    sudo cp "$asset" "$WALLPAPER_DEST"; placed=1
+    log_info "Lokale wallpaper uit repo gebruikt: $(basename "$asset")."
+  fi
+  if [[ "$placed" -eq 0 ]]; then
+    log_warn "Geen wallpaper ingesteld voor ${COMPANY_NAME} (URL en lokale asset faalden)."
+    return 0
   fi
   sudo chmod 644 "$WALLPAPER_DEST"
 
