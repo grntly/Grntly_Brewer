@@ -18,7 +18,7 @@
 # ---------------------------------------------------------------------------
 
 remote_main() {
-  if ! ask_yes_no "Remote beheer (SSH via Tailscale) instellen?" y; then
+  if ! ask_yes_no "Remote beheer (SSH via Tailscale) instellen?" "$(policy_default_char ENABLE_REMOTE)"; then
     log_warn "Remote beheer overgeslagen op eigen verzoek."
     return 0
   fi

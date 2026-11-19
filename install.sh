@@ -5,10 +5,13 @@
 # Usage:
 #   ./install.sh                 # interactive setup
 #   ./install.sh --dry-run       # show what would happen, change nothing
+#   ./install.sh --yes           # skip the confirmation screen (unattended)
 #   ./install.sh --rollback      # undo accounts/name/homebrew from a run
 #   ./install.sh --only 50,70    # run only the given module number prefixes
 #
-# This is a thin orchestrator: all logic lives in lib/common.sh and modules/.
+# Rollout policy lives in config.d/policy.conf (which controls are enforced and
+# the default answers). This is a thin orchestrator: logic lives in lib/ and
+# modules/.
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -22,11 +25,13 @@ source "${GRNTLY_ROOT}/lib/common.sh"
 # --- Argument parsing --------------------------------------------------------
 ONLY=""
 ACTION="install"
+ASSUME_YES=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run)  DRY_RUN=1 ;;
     --rollback) ACTION="rollback" ;;
     --only)     ONLY="${2:-}"; shift ;;
+    -y|--yes)   ASSUME_YES=1 ;;
     -h|--help)
       grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'
       exit 0 ;;
@@ -34,7 +39,7 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
-export DRY_RUN
+export DRY_RUN ASSUME_YES
 
 # --- Preconditions -----------------------------------------------------------
 require_macos
@@ -81,6 +86,7 @@ should_run() {
   [[ ",$ONLY," == *",$prefix,"* ]]
 }
 
+declare -a GRNTLY_FAILED_MODULES=()
 for entry in "${MODULES[@]}"; do
   file="${entry%%:*}"
   func="${entry##*:}"
@@ -88,12 +94,24 @@ for entry in "${MODULES[@]}"; do
   # shellcheck disable=SC1090
   source "${GRNTLY_ROOT}/modules/${file}.sh"
   log_step "Module: ${file}"
+  # Fault-tolerant: one failing module must not abort the whole rollout. Hard
+  # aborts (die/exit, e.g. invalid input or user cancel) still stop the run.
+  set +e
   "$func"
+  rc=$?
+  set -e
+  if [[ $rc -ne 0 ]]; then
+    log_error "Module ${file} eindigde met fout (exit ${rc}); doorgaan met de overige modules."
+    GRNTLY_FAILED_MODULES+=("$file")
+  fi
 done
 
 print_summary
-if [[ "${GRNTLY_VERIFY_FAILED:-0}" -eq 1 ]]; then
-  log_warn "Setup voltooid, maar de eindcontrole meldde openstaande punten (exit 2)."
+if [[ ${#GRNTLY_FAILED_MODULES[@]} -gt 0 ]]; then
+  log_warn "Modules met fouten: ${GRNTLY_FAILED_MODULES[*]}"
+fi
+if [[ ${#GRNTLY_FAILED_MODULES[@]} -gt 0 || "${GRNTLY_VERIFY_FAILED:-0}" -eq 1 ]]; then
+  log_warn "Setup voltooid MET openstaande punten (exit 2) — zie de ✗-items en fout-modules hierboven."
   exit 2
 fi
-log_ok "Setup voltooid."
+log_ok "Setup volledig en compliant voltooid."
